@@ -65,6 +65,10 @@ def load_qobuz_client() -> QobuzClient:
 
 
 def login_qobuz(client: QobuzClient) -> None:
+    token = os.getenv("QOBUZ_AUTH_TOKEN", "").strip()
+    if token:
+        client.login_with_token(token)
+        return
     email = os.getenv("QOBUZ_EMAIL", "").strip()
     password = os.getenv("QOBUZ_PASSWORD", "").strip()
     if not email:

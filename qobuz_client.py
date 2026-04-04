@@ -204,6 +204,20 @@ class QobuzClient:
             f"[green]Logged in to Qobuz as {data['user']['display_name']}[/green]"
         )
 
+    def login_with_token(self, user_auth_token: str) -> None:
+        """Authenticate using a token captured directly from a browser session.
+
+        Use this when the email/password login flow is broken (Qobuz periodically
+        changes their auth mechanism). To get a token:
+          1. Log in at play.qobuz.com in your browser
+          2. Open DevTools → Network tab → filter for 'user/login'
+          3. Copy 'user_auth_token' from the response JSON
+          4. Add QOBUZ_AUTH_TOKEN=<value> to your .env file
+        """
+        self.user_auth_token = user_auth_token
+        self.session.headers.update({"X-User-Auth-Token": user_auth_token})
+        console.print("[green]Authenticated with Qobuz token.[/green]")
+
     def _require_auth(self):
         if not self.user_auth_token:
             raise QobuzAuthError("Not logged in. Call login() first.")
