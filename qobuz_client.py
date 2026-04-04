@@ -369,23 +369,45 @@ class QobuzClient:
         return {item["id"] for item in items if "id" in item}
 
     def get_playlist_tracks(self, playlist_id: int) -> list[dict]:
-        """Return ordered list of track items in a playlist."""
-        data = self.get_playlist(playlist_id)
-        return (data.get("tracks") or {}).get("items") or []
-
-    def delete_tracks_from_playlist(self, playlist_id: int, playlist_track_ids: list[int]) -> dict:
-        """Remove specific tracks from a playlist using their playlist_track_ids."""
+        """Return all track items in a playlist, handling pagination."""
         self._require_auth()
-        if not playlist_track_ids:
+        items: list[dict] = []
+        limit = 50
+        offset = 0
+        while True:
+            resp = self.session.get(
+                f"{QOBUZ_API}/playlist/get",
+                params={
+                    "playlist_id": playlist_id,
+                    "extra": "tracks",
+                    "limit": limit,
+                    "offset": offset,
+                },
+                timeout=20,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            page = (data.get("tracks") or {}).get("items") or []
+            items.extend(page)
+            total = (data.get("tracks") or {}).get("total", 0)
+            offset += limit
+            if offset >= total:
+                break
+        return items
+
+    def delete_tracks_from_playlist(self, playlist_id: int, track_ids: list[int]) -> dict:
+        """Remove specific tracks from a playlist by track ID."""
+        self._require_auth()
+        if not track_ids:
             return {}
         last_response: dict = {}
-        for i in range(0, len(playlist_track_ids), 50):
-            batch = playlist_track_ids[i : i + 50]
+        for i in range(0, len(track_ids), 50):
+            batch = track_ids[i : i + 50]
             resp = self.session.post(
                 f"{QOBUZ_API}/playlist/deleteTracks",
                 data={
                     "playlist_id": str(playlist_id),
-                    "playlist_track_ids": ",".join(str(t) for t in batch),
+                    "track_ids": ",".join(str(t) for t in batch),
                 },
                 timeout=20,
             )
@@ -396,19 +418,15 @@ class QobuzClient:
     def prepend_tracks_to_playlist(self, playlist_id: int, track_ids: list[int]) -> None:
         """Add tracks to the beginning of a playlist.
 
-        Strategy: add new tracks (go to end), then delete the original tracks
-        and re-add them so they follow the new ones.
+        Strategy: capture existing track order, delete all existing tracks,
+        then add new tracks followed by the original tracks.
         """
-        existing_items = self.get_playlist_tracks(playlist_id)
-        existing_track_ids = [item["id"] for item in existing_items if "id" in item]
-        existing_playlist_track_ids = [
-            item["playlist_track_id"]
-            for item in existing_items
-            if "playlist_track_id" in item
-        ]
+        existing_track_ids = [item["id"] for item in self.get_playlist_tracks(playlist_id) if "id" in item]
+
+        if existing_track_ids:
+            self.delete_tracks_from_playlist(playlist_id, existing_track_ids)
 
         self.add_tracks_to_playlist(playlist_id, track_ids)
 
-        if existing_playlist_track_ids:
-            self.delete_tracks_from_playlist(playlist_id, existing_playlist_track_ids)
+        if existing_track_ids:
             self.add_tracks_to_playlist(playlist_id, existing_track_ids)
