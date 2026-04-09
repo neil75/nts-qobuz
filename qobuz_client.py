@@ -304,6 +304,19 @@ class QobuzClient:
             .replace("\u2014", "-")   # em dash → hyphen
         )
 
+    @staticmethod
+    def _substr_match(a: str, b: str, min_ratio: float = 0.8) -> bool:
+        """True if a and b match via substring, but only if the shorter string
+        is at least min_ratio of the longer string's length. This prevents
+        short strings (e.g. 'Eternal') from falsely matching longer ones
+        (e.g. 'Eternal 808') or partial artist names matching unrelated artists."""
+        if a == b:
+            return True
+        shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+        if shorter in longer:
+            return len(shorter) / len(longer) >= min_ratio
+        return False
+
     def _best_match(
         self, results: list[QobuzTrack], artist: str, title: str
     ) -> Optional[QobuzTrack]:
@@ -319,9 +332,9 @@ class QobuzClient:
             track_title = self._normalize(track.title)
             track_artist = self._normalize(track.artist)
 
-            title_match = title_n in track_title or track_title in title_n
+            title_match = self._substr_match(title_n, track_title)
             artist_match = any(
-                part in track_artist or track_artist in part
+                self._substr_match(part, track_artist)
                 for part in artist_parts
             )
 
