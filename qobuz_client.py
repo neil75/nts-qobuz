@@ -218,6 +218,18 @@ class QobuzClient:
         self.session.headers.update({"X-User-Auth-Token": user_auth_token})
         console.print("[green]Authenticated with Qobuz token.[/green]")
 
+    def verify_auth(self) -> bool:
+        """Return True if the current token is valid, False if it has expired."""
+        try:
+            resp = self.session.get(
+                f"{QOBUZ_API}/track/search",
+                params={"query": "test", "limit": 1, "offset": 0},
+                timeout=10,
+            )
+            return resp.status_code != 401
+        except Exception:
+            return False
+
     def _require_auth(self):
         if not self.user_auth_token:
             raise QobuzAuthError("Not logged in. Call login() first.")

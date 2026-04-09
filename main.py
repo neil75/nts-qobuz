@@ -64,10 +64,31 @@ def load_qobuz_client() -> QobuzClient:
         sys.exit(1)
 
 
+def _run_get_token() -> str:
+    """Launch get_token.py and return the newly saved token."""
+    import subprocess
+    get_token_script = os.path.join(os.path.dirname(__file__), "get_token.py")
+    console.print("[yellow]Launching browser to capture a fresh Qobuz token...[/yellow]")
+    result = subprocess.run([sys.executable, get_token_script])
+    if result.returncode != 0:
+        console.print("[red]Token capture failed. Exiting.[/red]")
+        sys.exit(1)
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+    return os.getenv("QOBUZ_AUTH_TOKEN", "").strip()
+
+
 def login_qobuz(client: QobuzClient) -> None:
     token = os.getenv("QOBUZ_AUTH_TOKEN", "").strip()
     if token:
         client.login_with_token(token)
+        if not client.verify_auth():
+            console.print("[yellow]Token has expired — refreshing...[/yellow]")
+            token = _run_get_token()
+            if not token:
+                console.print("[red]No token captured. Exiting.[/red]")
+                sys.exit(1)
+            client.login_with_token(token)
         return
     email = os.getenv("QOBUZ_EMAIL", "").strip()
     password = os.getenv("QOBUZ_PASSWORD", "").strip()
