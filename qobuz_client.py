@@ -304,12 +304,21 @@ class QobuzClient:
             .replace("\u2014", "-")   # em dash → hyphen
         )
 
+    _ARTIST_SEP = re.compile(
+        r'\s*[&/,+]\s*|\s+(?:feat|ft|vs|and)\.?\s+', re.IGNORECASE
+    )
+
+    @classmethod
+    def _split_artists(cls, s: str) -> list[str]:
+        """Split an artist string on common separators (&, /, feat. etc.)."""
+        return [p.strip() for p in cls._ARTIST_SEP.split(s) if p.strip()]
+
     @staticmethod
     def _substr_match(a: str, b: str, min_ratio: float = 0.8) -> bool:
         """True if a and b match via substring, but only if the shorter string
         is at least min_ratio of the longer string's length. This prevents
         short strings (e.g. 'Eternal') from falsely matching longer ones
-        (e.g. 'Eternal 808') or partial artist names matching unrelated artists."""
+        (e.g. 'Eternal 808')."""
         if a == b:
             return True
         shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
@@ -322,20 +331,21 @@ class QobuzClient:
     ) -> Optional[QobuzTrack]:
         """
         Return the first result where both title and artist loosely match.
-        Artist matching handles comma-separated credits (e.g. "Artist A, Artist B").
+        NTS artists are comma-separated; Qobuz artists may use &, feat. etc.
+        Each NTS artist part is compared against each Qobuz artist part individually.
         """
         title_n = self._normalize(title)
-        # Split on commas to handle multi-artist credits on NTS tracklists
-        artist_parts = [self._normalize(a) for a in artist.split(",") if a.strip()]
+        nts_artist_parts = [self._normalize(a) for a in artist.split(",") if a.strip()]
 
         for track in results:
             track_title = self._normalize(track.title)
-            track_artist = self._normalize(track.artist)
+            qobuz_artist_parts = self._split_artists(self._normalize(track.artist))
 
             title_match = self._substr_match(title_n, track_title)
             artist_match = any(
-                self._substr_match(part, track_artist)
-                for part in artist_parts
+                self._substr_match(nts_part, qobuz_part)
+                for nts_part in nts_artist_parts
+                for qobuz_part in qobuz_artist_parts
             )
 
             if title_match and artist_match:
