@@ -103,6 +103,32 @@ def login_qobuz(client: QobuzClient) -> None:
         sys.exit(1)
 
 
+def service_login_qobuz(client: QobuzClient) -> None:
+    """Headless login for service mode.
+
+    Never prompts and never spawns a browser. Raises QobuzAuthError if no
+    valid credentials are available so the caller can notify and exit
+    cleanly (systemd / cron will retry on the next scheduled run).
+    """
+    token = os.getenv("QOBUZ_AUTH_TOKEN", "").strip()
+    if token:
+        client.login_with_token(token)
+        if not client.verify_auth():
+            raise QobuzAuthError(
+                "QOBUZ_AUTH_TOKEN has expired. Re-capture it via get_token.py "
+                "on a desktop machine and update .env, then restart the service."
+            )
+        return
+    email = os.getenv("QOBUZ_EMAIL", "").strip()
+    password = os.getenv("QOBUZ_PASSWORD", "").strip()
+    if not email or not password:
+        raise QobuzAuthError(
+            "No Qobuz credentials configured. Set QOBUZ_AUTH_TOKEN (preferred) "
+            "or QOBUZ_EMAIL + QOBUZ_PASSWORD in .env."
+        )
+    client.login(email, password)
+
+
 # ---------------------------------------------------------------------------
 # Display helpers
 # ---------------------------------------------------------------------------

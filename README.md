@@ -108,6 +108,126 @@ playlist so subsequent runs prepend to the new one.
 After each show is processed the config file is rewritten in-place, so a
 crash mid-run won't lose committed work.
 
+### Headless authentication
+
+Service mode is fully headless: it never spawns a browser. Set
+`QOBUZ_AUTH_TOKEN` in `.env` (preferred) or `QOBUZ_EMAIL` + `QOBUZ_PASSWORD`.
+If the token expires, the run aborts cleanly with an error notification —
+re-capture a token on a desktop machine via `python get_token.py` and update
+`.env`. systemd / cron will pick up the new token on the next scheduled run.
+
+### Notifications
+
+Add a `notifications` block to the config to be alerted when runs add
+tracks, encounter errors, or expire the auth token. Configure any
+combination of the four supported transports — leave others out entirely.
+
+**ntfy.sh** (push notifications to your phone, no signup):
+
+```json
+"notifications": {
+  "ntfy_topic": "https://ntfy.sh/your-secret-topic-name"
+}
+```
+
+Subscribe to the same topic in the ntfy mobile app to receive pushes.
+
+**Discord webhook:**
+
+```json
+"notifications": {
+  "discord_webhook": "https://discord.com/api/webhooks/.../...."
+}
+```
+
+**Telegram bot:**
+
+```json
+"notifications": {
+  "telegram": {
+    "bot_token": "123456:ABC-DEF...",
+    "chat_id": "987654321"
+  }
+}
+```
+
+Create a bot with `@BotFather`, then DM it once and grab your `chat_id` from
+`https://api.telegram.org/bot<token>/getUpdates`.
+
+**SMTP email** (Gmail example — use an app password, not your account password):
+
+```json
+"notifications": {
+  "email": {
+    "smtp_host": "smtp.gmail.com",
+    "smtp_port": 587,
+    "smtp_user": "you@gmail.com",
+    "smtp_password": "app-specific-password",
+    "from": "you@gmail.com",
+    "to": "you@gmail.com",
+    "use_starttls": true
+  }
+}
+```
+
+For port 465 (implicit TLS) `use_starttls` is ignored.
+
+**Filtering** (all defaults shown):
+
+```json
+"notifications": {
+  "ntfy_topic": "...",
+  "notify_on_success":    true,
+  "notify_on_error":      true,
+  "notify_on_no_changes": false
+}
+```
+
+By default you get pinged when something was added or when something broke,
+but quiet runs (no new episodes) stay silent.
+
+### Running on a Raspberry Pi
+
+**systemd** (recommended for `--loop`):
+
+```ini
+# /etc/systemd/system/nts-qobuz.service
+[Unit]
+Description=NTS to Qobuz playlist sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/nts-qobuz
+ExecStart=/home/pi/nts-qobuz/.venv/bin/python main.py --service --loop
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now nts-qobuz
+journalctl -u nts-qobuz -f
+```
+
+**cron** (one-shot, daily at 4am):
+
+```cron
+0 4 * * * cd /home/pi/nts-qobuz && .venv/bin/python main.py --service >> service.log 2>&1
+```
+
+On Raspberry Pi OS Bookworm or newer, install into a virtualenv to avoid
+the system-pip lockout:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
 ## How it works
 
 1. **NTS scrape**: Fetches tracklist data from the NTS public API (`nts.live/api/v2`). If the API doesn't include a tracklist, falls back to parsing the embedded Next.js `__NEXT_DATA__` JSON from the episode page.
