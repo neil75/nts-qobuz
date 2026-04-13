@@ -51,6 +51,183 @@ python main.py --show floating-points --playlist-name "Floating Points Jan 2020"
 python main.py --url "..." --no-confirm
 ```
 
+## Service mode
+
+Service mode reads a JSON config listing NTS shows and their corresponding
+Qobuz playlists, then on each run fetches every episode broadcast since the
+last run, prepends any newly-found tracks to the playlist, and persists the
+updated `last_updated` timestamp.
+
+```bash
+# Copy the example and edit it with your shows + playlist IDs
+cp service_config.example.json service_config.json
+
+# Run once (suitable for cron / systemd timers)
+python main.py --service
+
+# Run forever, sleeping interval_hours between runs
+python main.py --service --loop
+
+# Custom config path
+python main.py --service --config /etc/nts-qobuz/shows.json
+```
+
+### Config format
+
+```json
+{
+  "interval_hours": 24,
+  "shows": [
+    {
+      "url": "https://www.nts.live/shows/floating-points",
+      "playlist_id": 12345678,
+      "last_updated": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+Each show entry needs:
+
+| Field | Required | Notes |
+|---|---|---|
+| `url` *or* `show` | yes | Full NTS URL or just the show slug |
+| `playlist_id` | yes | The Qobuz playlist to prepend new tracks to |
+| `last_updated` | yes | ISO-8601 timestamp; episodes broadcast after this are processed. Set to a far-back date to backfill. |
+| `is_public` | no | Whether overflow playlists should be public (default: false) |
+
+### Splitting and playlist IDs
+
+Tracks are prepended in chronological order so the newest episode's tracks
+end up at the very top of the playlist. When the 2000-track Qobuz limit is
+reached the run "splits" — overflow tracks go into a new playlist named
+`{original} (2)` (and `(3)`, etc.). When that happens, the config's
+`playlist_id` is automatically rolled forward to the most recently created
+playlist so subsequent runs prepend to the new one.
+
+After each show is processed the config file is rewritten in-place, so a
+crash mid-run won't lose committed work.
+
+### Headless authentication
+
+Service mode is fully headless: it never spawns a browser. Set
+`QOBUZ_AUTH_TOKEN` in `.env` (preferred) or `QOBUZ_EMAIL` + `QOBUZ_PASSWORD`.
+If the token expires, the run aborts cleanly with an error notification —
+re-capture a token on a desktop machine via `python get_token.py` and update
+`.env`. systemd / cron will pick up the new token on the next scheduled run.
+
+### Notifications
+
+Add a `notifications` block to the config to be alerted when runs add
+tracks, encounter errors, or expire the auth token. Configure any
+combination of the four supported transports — leave others out entirely.
+
+**ntfy.sh** (push notifications to your phone, no signup):
+
+```json
+"notifications": {
+  "ntfy_topic": "https://ntfy.sh/your-secret-topic-name"
+}
+```
+
+Subscribe to the same topic in the ntfy mobile app to receive pushes.
+
+**Discord webhook:**
+
+```json
+"notifications": {
+  "discord_webhook": "https://discord.com/api/webhooks/.../...."
+}
+```
+
+**Telegram bot:**
+
+```json
+"notifications": {
+  "telegram": {
+    "bot_token": "123456:ABC-DEF...",
+    "chat_id": "987654321"
+  }
+}
+```
+
+Create a bot with `@BotFather`, then DM it once and grab your `chat_id` from
+`https://api.telegram.org/bot<token>/getUpdates`.
+
+**SMTP email** (Gmail example — use an app password, not your account password):
+
+```json
+"notifications": {
+  "email": {
+    "smtp_host": "smtp.gmail.com",
+    "smtp_port": 587,
+    "smtp_user": "you@gmail.com",
+    "smtp_password": "app-specific-password",
+    "from": "you@gmail.com",
+    "to": "you@gmail.com",
+    "use_starttls": true
+  }
+}
+```
+
+For port 465 (implicit TLS) `use_starttls` is ignored.
+
+**Filtering** (all defaults shown):
+
+```json
+"notifications": {
+  "ntfy_topic": "...",
+  "notify_on_success":    true,
+  "notify_on_error":      true,
+  "notify_on_no_changes": false
+}
+```
+
+By default you get pinged when something was added or when something broke,
+but quiet runs (no new episodes) stay silent.
+
+### Running on a Raspberry Pi
+
+**systemd** (recommended for `--loop`):
+
+```ini
+# /etc/systemd/system/nts-qobuz.service
+[Unit]
+Description=NTS to Qobuz playlist sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/nts-qobuz
+ExecStart=/home/pi/nts-qobuz/.venv/bin/python main.py --service --loop
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now nts-qobuz
+journalctl -u nts-qobuz -f
+```
+
+**cron** (one-shot, daily at 4am):
+
+```cron
+0 4 * * * cd /home/pi/nts-qobuz && .venv/bin/python main.py --service >> service.log 2>&1
+```
+
+On Raspberry Pi OS Bookworm or newer, install into a virtualenv to avoid
+the system-pip lockout:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
 ## How it works
 
 1. **NTS scrape**: Fetches tracklist data from the NTS public API (`nts.live/api/v2`). If the API doesn't include a tracklist, falls back to parsing the embedded Next.js `__NEXT_DATA__` JSON from the episode page.

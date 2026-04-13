@@ -103,6 +103,32 @@ def login_qobuz(client: QobuzClient) -> None:
         sys.exit(1)
 
 
+def service_login_qobuz(client: QobuzClient) -> None:
+    """Headless login for service mode.
+
+    Never prompts and never spawns a browser. Raises QobuzAuthError if no
+    valid credentials are available so the caller can notify and exit
+    cleanly (systemd / cron will retry on the next scheduled run).
+    """
+    token = os.getenv("QOBUZ_AUTH_TOKEN", "").strip()
+    if token:
+        client.login_with_token(token)
+        if not client.verify_auth():
+            raise QobuzAuthError(
+                "QOBUZ_AUTH_TOKEN has expired. Re-capture it via get_token.py "
+                "on a desktop machine and update .env, then restart the service."
+            )
+        return
+    email = os.getenv("QOBUZ_EMAIL", "").strip()
+    password = os.getenv("QOBUZ_PASSWORD", "").strip()
+    if not email or not password:
+        raise QobuzAuthError(
+            "No Qobuz credentials configured. Set QOBUZ_AUTH_TOKEN (preferred) "
+            "or QOBUZ_EMAIL + QOBUZ_PASSWORD in .env."
+        )
+    client.login(email, password)
+
+
 # ---------------------------------------------------------------------------
 # Display helpers
 # ---------------------------------------------------------------------------
@@ -601,6 +627,22 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="When using --add-to, insert new tracks at the beginning of the playlist.",
     )
+    p.add_argument(
+        "--service",
+        action="store_true",
+        help="Run in service mode: process every show in the config file once and exit.",
+    )
+    p.add_argument(
+        "--loop",
+        action="store_true",
+        help="With --service, run continuously, sleeping interval_hours between runs.",
+    )
+    p.add_argument(
+        "--config",
+        metavar="PATH",
+        default="service_config.json",
+        help="Path to service-mode config file (default: service_config.json).",
+    )
     return p
 
 
@@ -608,7 +650,7 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    if not args.url and not args.show:
+    if not args.url and not args.show and not args.service:
         parser.print_help()
         sys.exit(0)
 
@@ -618,6 +660,22 @@ def main() -> None:
             border_style="cyan",
         )
     )
+
+    # Service mode: process every show in the config file
+    if args.service:
+        from pathlib import Path
+
+        import service
+
+        config_path = Path(args.config)
+        if not config_path.exists():
+            console.print(f"[red]Config file not found:[/red] {config_path}")
+            sys.exit(1)
+        if args.loop:
+            service.run_loop(config_path)
+        else:
+            service.run_once(config_path)
+        return
 
     # All-episodes mega-playlist
     if args.all_episodes:
