@@ -1,0 +1,16 @@
+{
+  "interval_hours": 24,
+  "shows": [
+    {
+      "url": "https://www.nts.live/shows/floating-points",
+      "playlist_id": 12345678,
+      "last_updated": "2026-01-01T00:00:00Z"
+    },
+    {
+      "show": "charlie-bones",
+      "playlist_id": 87654321,
+      "last_updated": "2026-01-01T00:00:00Z",
+      "is_public": false
+    }
+  ]
+}

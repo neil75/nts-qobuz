@@ -601,6 +601,22 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="When using --add-to, insert new tracks at the beginning of the playlist.",
     )
+    p.add_argument(
+        "--service",
+        action="store_true",
+        help="Run in service mode: process every show in the config file once and exit.",
+    )
+    p.add_argument(
+        "--loop",
+        action="store_true",
+        help="With --service, run continuously, sleeping interval_hours between runs.",
+    )
+    p.add_argument(
+        "--config",
+        metavar="PATH",
+        default="service_config.json",
+        help="Path to service-mode config file (default: service_config.json).",
+    )
     return p
 
 
@@ -608,7 +624,7 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    if not args.url and not args.show:
+    if not args.url and not args.show and not args.service:
         parser.print_help()
         sys.exit(0)
 
@@ -618,6 +634,22 @@ def main() -> None:
             border_style="cyan",
         )
     )
+
+    # Service mode: process every show in the config file
+    if args.service:
+        from pathlib import Path
+
+        import service
+
+        config_path = Path(args.config)
+        if not config_path.exists():
+            console.print(f"[red]Config file not found:[/red] {config_path}")
+            sys.exit(1)
+        if args.loop:
+            service.run_loop(config_path)
+        else:
+            service.run_once(config_path)
+        return
 
     # All-episodes mega-playlist
     if args.all_episodes:
