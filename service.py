@@ -176,10 +176,10 @@ def _resolve_show_slug(show_entry: dict) -> str:
 
 def collect_new_tracks(
     show_slug: str, last_updated: Optional[datetime]
-) -> tuple[list[nts.Track], Optional[datetime]]:
+) -> tuple[list[nts.Track], int, Optional[datetime]]:
     """
     Fetch episodes broadcast after `last_updated`, enrich their tracklists,
-    and return (tracks_newest_first, latest_broadcast_seen).
+    and return (tracks_newest_first, episode_count, latest_broadcast_seen).
 
     Tracks are deduplicated across episodes and returned newest-first so that
     prepending preserves broadcast order (newest episode's tracks end up at
@@ -213,7 +213,7 @@ def collect_new_tracks(
         time.sleep(0.3)
 
     if not all_new:
-        return [], latest_broadcast
+        return [], 0, latest_broadcast
 
     console.print(f"[dim]{len(all_new)} new episode(s) to process.[/dim]")
 
@@ -239,7 +239,7 @@ def collect_new_tracks(
             oldest_first.append(t)
         time.sleep(0.2)
 
-    return list(reversed(oldest_first)), latest_broadcast
+    return list(reversed(oldest_first)), len(all_new), latest_broadcast
 
 
 # ---------------------------------------------------------------------------
@@ -289,7 +289,7 @@ def process_show(client: QobuzClient, show_entry: dict) -> ShowResult:
         f"last updated {last_updated.isoformat()}"
     )
 
-    new_tracks, latest_broadcast = collect_new_tracks(show_slug, last_updated)
+    new_tracks, episode_count, latest_broadcast = collect_new_tracks(show_slug, last_updated)
 
     if not new_tracks:
         console.print("[dim]No new tracks since last run.[/dim]")
@@ -297,8 +297,9 @@ def process_show(client: QobuzClient, show_entry: dict) -> ShowResult:
             show_entry["last_updated"] = latest_broadcast.isoformat()
         return result
 
+    result.episodes = episode_count
     result.tracks_found = len(new_tracks)
-    console.print(f"[green]{len(new_tracks)} new track(s) to prepend.[/green]")
+    console.print(f"[green]{len(new_tracks)} new track(s) from {episode_count} episode(s) to prepend.[/green]")
 
     track_ids, not_found = search_and_match(client, new_tracks)
     result.not_found = len(not_found)
