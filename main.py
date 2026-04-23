@@ -292,11 +292,12 @@ def add_to_existing_playlist(
     console.print(f"[dim]Fetching existing tracks in playlist {playlist_id}...[/dim]")
     data = client.get_playlist(playlist_id)
     playlist_name = data.get("name", str(playlist_id))
-    # get_playlist only returns the first page of tracks, so use the
-    # paginated helper for an accurate count and full dedup set.
+    # Use the API-reported total as the authoritative count (pagination may
+    # not return every item, but `total` is always accurate).
+    api_total = (data.get("tracks") or {}).get("total", 0)
     existing_items = client.get_playlist_tracks(playlist_id)
     existing_ids = {item["id"] for item in existing_items if "id" in item}
-    current_count = len(existing_items)
+    current_count = max(api_total, len(existing_items))
 
     new_ids = [tid for tid in track_ids if tid not in existing_ids]
     dupes = len(track_ids) - len(new_ids)

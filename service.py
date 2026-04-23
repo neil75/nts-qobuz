@@ -329,8 +329,9 @@ def process_show(client: QobuzClient, show_entry: dict) -> ShowResult:
     # If overflow created new playlist(s), roll the config's playlist_id
     # forward to the last-created one so subsequent runs prepend there.
     playlists = add_result.get("playlists") or []
-    if len(playlists) > 1:
-        new_primary = playlists[-1][0]
+    overflow = [pid for pid, _, _ in playlists if pid != playlist_id]
+    if overflow:
+        new_primary = overflow[-1]
         console.print(
             f"[yellow]Playlist overflowed — primary for next run is now "
             f"[bold]{new_primary}[/bold].[/yellow]"
