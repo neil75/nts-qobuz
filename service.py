@@ -217,18 +217,20 @@ def collect_new_tracks(
 
     console.print(f"[dim]{len(all_new)} new episode(s) to process.[/dim]")
 
-    # Sort oldest-first so we walk through history in chronological order,
-    # then reverse the final track list so prepending preserves chronology.
+    # Iterate episodes newest-first, keeping track order within each episode.
+    # Prepending this list produces: newest episode's track 1 at the top,
+    # followed by track 2, 3, ..., then the next-newest episode's tracks,
+    # etc. — matching the order they appear on the NTS site.
     def ep_sort_key(ep: nts.Episode):
         return _parse_iso(ep.broadcast) or datetime.min.replace(tzinfo=timezone.utc)
 
-    all_new.sort(key=ep_sort_key)
+    all_new.sort(key=ep_sort_key, reverse=True)
 
     # Local import avoids a circular dependency at module load time.
     from main import _track_key
 
     seen_keys: set[tuple] = set()
-    oldest_first: list[nts.Track] = []
+    ordered: list[nts.Track] = []
     for ep in all_new:
         nts.enrich_tracklist(ep)
         for t in ep.tracklist or []:
@@ -236,10 +238,10 @@ def collect_new_tracks(
             if key in seen_keys:
                 continue
             seen_keys.add(key)
-            oldest_first.append(t)
+            ordered.append(t)
         time.sleep(0.2)
 
-    return list(reversed(oldest_first)), len(all_new), latest_broadcast
+    return ordered, len(all_new), latest_broadcast
 
 
 # ---------------------------------------------------------------------------
