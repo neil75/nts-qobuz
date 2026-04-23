@@ -428,7 +428,7 @@ class QobuzClient:
         """Return all track items in a playlist, handling pagination."""
         self._require_auth()
         items: list[dict] = []
-        limit = 50
+        limit = 500
         offset = 0
         while True:
             resp = self.session.get(
@@ -439,14 +439,17 @@ class QobuzClient:
                     "limit": limit,
                     "offset": offset,
                 },
-                timeout=20,
+                timeout=30,
             )
             resp.raise_for_status()
             data = resp.json()
-            page = (data.get("tracks") or {}).get("items") or []
+            tracks_obj = data.get("tracks") or {}
+            page = tracks_obj.get("items") or []
+            total = tracks_obj.get("total", 0)
+            if not page:
+                break
             items.extend(page)
-            total = (data.get("tracks") or {}).get("total", 0)
-            offset += limit
+            offset += len(page)
             if offset >= total:
                 break
         return items
