@@ -335,7 +335,7 @@ class QobuzClient:
         Each NTS artist part is compared against each Qobuz artist part individually.
         """
         title_n = self._normalize(title)
-        nts_artist_parts = [self._normalize(a) for a in artist.split(",") if a.strip()]
+        nts_artist_parts = self._split_artists(self._normalize(artist))
 
         for track in results:
             track_title = self._normalize(track.title)
